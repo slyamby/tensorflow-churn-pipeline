@@ -1,4 +1,7 @@
-\venv
-*.env
-py_cache
-
+venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+models/
+data/raw/
