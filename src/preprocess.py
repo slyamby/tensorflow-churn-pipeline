@@ -63,7 +63,7 @@ def train_test_split_data(X,y):
 
 
 if __name__ == "__main__":
-    from load_data import load_telco_data, clean_telco_data
+    from src.load_data import load_telco_data, clean_telco_data
 
     df = load_telco_data()
     df = clean_telco_data(df)

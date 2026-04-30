@@ -1,18 +1,19 @@
 import os
+import joblib
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, models, callbacks
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-from sklearn.pipeline import Pipeline
+from sklearn.utils.class_weight import compute_class_weight
 
-from load_data import load_telco_data, clean_telco_data
-from preprocess import (
+from src.load_data import load_telco_data, clean_telco_data
+from src.preprocess import (
     split_features_target,
     get_feature_types,
     build_preprocessing_pipeline,
     train_test_split_data
 )
-from feature_selection import compute_mutual_information
+from src.feature_selection import compute_mutual_information
 
 
 # ------------------------------
@@ -22,6 +23,8 @@ TOP_N_FEATURES = 10
 EPOCHS = 50
 BATCH_SIZE = 32
 MODEL_PATH = "models/telco_churn_tensorflow.keras"
+PREPROCESSOR_PATH = "models/preprocessor.pkl"
+TOP_FEATURES_PATH = "models/top_features.pkl"
 
 
 # -------------------------------
@@ -35,6 +38,9 @@ def build_tf_model(input_dim: int):
     model = models.Sequential([
         layers.Input(shape=(input_dim,)),
 
+        layers.Dense(128, activation="relu"),
+        layers.Dropout(0.3),
+
         layers.Dense(64, activation="relu"),
         layers.Dropout(0.3),
 
@@ -47,7 +53,7 @@ def build_tf_model(input_dim: int):
     model.compile(
         optimizer="adam",
         loss="binary_crossentropy",
-        metrics=["accuracy"]
+        metrics=["accuracy", tf.keras.metrics.AUC(name="auc")]
     )
 
     return model
@@ -57,6 +63,8 @@ def build_tf_model(input_dim: int):
 # 3. Main Training Workflow
 # ----------------------------
 def main():
+    os.makedirs("models", exist_ok=True)
+
     # Load and clean data
     df = load_telco_data()
     df = clean_telco_data(df)
@@ -72,6 +80,8 @@ def main():
 
     # Select top N features
     top_features = mi_scores.head(TOP_N_FEATURES).index.tolist()
+
+    joblib.dump(top_features, TOP_FEATURES_PATH)
 
     print("\nSelected Features")
     print(top_features)
@@ -125,6 +135,13 @@ def main():
         restore_best_weights=True
     )
 
+    classes = np.unique(y_train)
+    weights = compute_class_weight("balanced", classes=classes, y=y_train)
+    class_weights = dict(zip(classes, weights))
+
+    print("\nClass Weights:")
+    print(class_weights)
+
     # True model
     history = model.fit(
         X_train_processed,
@@ -133,18 +150,35 @@ def main():
         epochs=EPOCHS,
         batch_size=BATCH_SIZE,
         callbacks=[early_stopping],
+        class_weight=class_weights,
         verbose=1
     )
 
+    joblib.dump(preprocessor, PREPROCESSOR_PATH)
+
     # Evaluate model
-    test_loss, test_accuracy = model.evaluate(X_test_processed, y_test, verbose=0)
+    test_loss, test_accuracy, test_auc = model.evaluate(X_test_processed, y_test, verbose=0)
 
     print(f"\nTest Loss: {test_loss:.4f}")
     print(f"Test Accuracy: {test_accuracy:.4f}")
+    print(f"Test AUC: {test_auc:.4f}")
 
     # Predictions
-    pred_probs = model.predict(X_test_processed)
-    preds = (pred_probs >= 0.5).astype(int).ravel()
+    pred_probs = model.predict(X_test_processed).ravel()
+
+    thresholds = [0.3, 0.35, 0.4, 0.45, 0.5]
+
+    print("\nThreshold Comparison:")
+
+    for threshold in thresholds:
+        preds = (pred_probs >= threshold).astype(int)
+
+        print(f"\nThreshold: {threshold}")
+        print(classification_report(
+            y_test,
+            preds,
+            target_names=["No Churn", "Churn"]
+        ))
 
     print("\nClassification Report:")
     print(classification_report(y_test, preds, target_names=["No Churn", "Churn"]))
@@ -156,7 +190,6 @@ def main():
     print(accuracy_score(y_test, preds))
 
     # Save model
-    os.makedirs("models",exist_ok=True)
     model.save(MODEL_PATH)
 
     print(f"\nModel saved to: {MODEL_PATH}")

@@ -2,8 +2,8 @@ import pandas as pd
 import numpy as np
 from sklearn.feature_selection import mutual_info_classif
 
-from load_data import load_telco_data, clean_telco_data
-from preprocess import split_features_target, get_feature_types
+from src.load_data import load_telco_data, clean_telco_data
+from src.preprocess import split_features_target
 
 
 def compute_mutual_information(X: pd.DataFrame, y: pd.Series):

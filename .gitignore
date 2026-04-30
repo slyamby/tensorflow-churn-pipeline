@@ -5,3 +5,7 @@ __pycache__/
 .DS_Store
 models/
 data/raw/
+venv/
+__pycache__/
+*.pyc
+.DS_Store
